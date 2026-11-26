@@ -72,6 +72,34 @@ The database and `.env` are not in git, so a fresh copy needs two extra steps:
 
 The app creates its default categories on first launch.
 
+## Run it with Docker
+
+You need Docker Desktop running. No Node.js or `.env` file is needed.
+
+```powershell
+cd "ToDo List"
+docker compose up -d --build
+```
+
+Then open http://127.0.0.1:3100.
+
+- **First start:** the container creates the database and applies migrations automatically. After that, the app creates its default categories.
+- **Your data:** tasks are stored in the Docker volume `todolist_life-os-data`, mounted at `/data` inside the container.
+  - They survive rebuilds, restarts and `docker compose down`.
+  - Only `docker compose down -v` deletes them.
+- **Separate from the dev setup:** the Docker copy has its own database, separate from the one `npm run dev` uses. Tasks don't move between them. Use **Settings → Export** to keep a copy.
+- **Port already in use:** if `npm run dev` is already on 3100, pick another port with `$env:LIFE_OS_PORT=3101; docker compose up -d`.
+- **Local only:** the port is published on `127.0.0.1` only, so other devices on your network can't reach it.
+
+| Command | What it does |
+| --- | --- |
+| `docker compose up -d --build` | Build (or rebuild after code changes) and start in the background |
+| `docker compose logs -f` | Follow the app's logs |
+| `docker compose stop` | Stop the app (data kept) |
+| `docker compose down` | Remove the container (data kept in the volume) |
+
+The image is about 1.7 GB because it includes all production dependencies plus the Prisma CLI for migrations. A slimmer Next.js "standalone" build is a possible later improvement.
+
 ## Scripts
 
 | Command | What it does |

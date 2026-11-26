@@ -1,0 +1,25 @@
+# Never send secrets, local data or build output into the image.
+.env
+.env.*
+!.env.example
+data
+backups
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+node_modules
+.next
+out
+src/generated
+*.tsbuildinfo
+next-env.d.ts
+
+.git
+.claude
+.vscode
+Dockerfile
+docker-compose.yml
+.dockerignore
+*.log

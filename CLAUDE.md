@@ -81,6 +81,10 @@ data keeps the user's own rows). The local DB was left with the default categori
 Not done yet (next steps):
 1. Docs: README and `.env.example` exist (2026-11-26); ARCHITECTURE, ROADMAP, CHANGELOG are still to do.
    JSON import is not built (export only). Code is on GitHub (private): uraza116/life-os, branch master.
+   Docker (2026-11-26): `Dockerfile` (deps → build → runner, node:24-bookworm-slim, non-root),
+   `docker-entrypoint.sh` (prisma migrate deploy, then `next start -H 0.0.0.0`), `docker-compose.yml`
+   (127.0.0.1:${LIFE_OS_PORT:-3100}, volume `life-os-data` at /data). `dotenv` was moved to dependencies
+   because `prisma.config.ts` needs it at runtime. Verified: build, migrate, add task, survives recreate.
 2. Scoring weights are shown read-only in Settings. `settingsPatch` already accepts `scoringWeights`, so
    only the UI is missing.
 3. Saved views (`SavedView` model) and daily notes are in the schema but not in the UI.

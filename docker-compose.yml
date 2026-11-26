@@ -1,0 +1,18 @@
+services:
+  life-os:
+    build: .
+    image: life-os:latest
+    container_name: life-os
+    restart: unless-stopped
+    ports:
+      # Bound to 127.0.0.1 so only this computer can open the app (same as the local dev setup).
+      # Change the host port with LIFE_OS_PORT, e.g. if `npm run dev` is already using 3100.
+      - "127.0.0.1:${LIFE_OS_PORT:-3100}:3100"
+    environment:
+      DATABASE_URL: "file:/data/life-os.db"
+    volumes:
+      # Named volume managed by Docker; your tasks survive rebuilds and container removal.
+      - life-os-data:/data
+
+volumes:
+  life-os-data:
