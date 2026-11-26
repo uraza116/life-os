@@ -76,6 +76,16 @@ The app creates its default categories on first launch.
 
 You need Docker Desktop running. No Node.js or `.env` file is needed.
 
+### Quickest: the prebuilt image from Docker Hub
+
+```powershell
+docker run -d --name life-os -p 127.0.0.1:3100:3100 -v life-os-data:/data --restart unless-stopped usman116/life-os:latest
+```
+
+Then open http://127.0.0.1:3100. The image is [usman116/life-os](https://hub.docker.com/r/usman116/life-os).
+
+### Or build it from this repository
+
 ```powershell
 cd "ToDo List"
 docker compose up -d --build
