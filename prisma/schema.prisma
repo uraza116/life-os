@@ -1,0 +1,346 @@
+// Life OS database schema.
+//
+// Conventions (see ARCHITECTURE.md):
+// - Enumerations are stored as String and validated with Zod (src/lib/validation.ts)
+//   so the schema stays portable between SQLite and PostgreSQL.
+// - Calendar *dates* without a time (due date, start date) are stored as
+//   "YYYY-MM-DD" strings in the user's local calendar, so they never shift with timezones.
+//   Instants (createdAt, completedAt, scheduledStart) are DateTime.
+// - `isDemo` marks demonstration records so they can be removed in one click.
+// - `deletedAt` implements soft deletion (Trash). `archivedAt` hides without deleting.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Settings {
+  id               String   @id @default("singleton")
+  displayName      String   @default("")
+  workdayStart     String   @default("09:00")
+  workdayEnd       String   @default("18:00")
+  dailyCapacityMin Int      @default(420) // planned focused minutes available per day
+  energyLevel      String   @default("medium") // low | medium | high (current energy)
+  weekStartsOn     Int      @default(1) // 0 = Sunday, 1 = Monday
+  scoringWeights   String   @default("{}") // JSON overrides of default prioritization weights
+  aiEnabled        Boolean  @default(false)
+  aiProvider       String   @default("none")
+  demoLoaded       Boolean  @default(false)
+  onboarded        Boolean  @default(false)
+  updatedAt        DateTime @updatedAt
+}
+
+model Category {
+  id            String        @id @default(cuid())
+  name          String
+  color         String        @default("slate")
+  icon          String        @default("Folder")
+  importance    Int           @default(3) // 1-5, feeds prioritization
+  sortOrder     Int           @default(0)
+  hidden        Boolean       @default(false)
+  pinned        Boolean       @default(false)
+  isDemo        Boolean       @default(false)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  subcategories Subcategory[]
+  projects      Project[]
+  tasks         Task[]
+  habits        Habit[]
+  goals         Goal[]
+}
+
+model Subcategory {
+  id         String   @id @default(cuid())
+  categoryId String
+  category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+  name       String
+  sortOrder  Int      @default(0)
+  hidden     Boolean  @default(false)
+  isDemo     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  tasks      Task[]
+
+  @@index([categoryId])
+}
+
+model Project {
+  id          String      @id @default(cuid())
+  name        String
+  description String      @default("")
+  categoryId  String?
+  category    Category?   @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  goalId      String?
+  goal        Goal?       @relation(fields: [goalId], references: [id], onDelete: SetNull)
+  priority    Int         @default(3) // 1 (critical) .. 5 (someday)
+  importance  Int         @default(3) // 1-5
+  status      String      @default("active") // planning | active | on_hold | completed | cancelled
+  startDate   String?
+  targetDate  String?
+  notes       String      @default("")
+  resources   String      @default("[]") // JSON [{label,url}]
+  color       String?
+  icon        String      @default("FolderKanban")
+  pinned      Boolean     @default(false)
+  useWeightedMilestones Boolean @default(false)
+  isDemo      Boolean     @default(false)
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  archivedAt  DateTime?
+  deletedAt   DateTime?
+  milestones  Milestone[]
+  tasks       Task[]
+
+  @@index([categoryId])
+}
+
+model Milestone {
+  id          String    @id @default(cuid())
+  projectId   String
+  project     Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title       String
+  dueDate     String?
+  weight      Int       @default(1)
+  sortOrder   Int       @default(0)
+  completedAt DateTime?
+  isDemo      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  tasks       Task[]
+
+  @@index([projectId])
+}
+
+model Task {
+  id               String    @id @default(cuid())
+  title            String
+  description      String    @default("")
+  notes            String    @default("")
+  categoryId       String?
+  category         Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  subcategoryId    String?
+  subcategory      Subcategory? @relation(fields: [subcategoryId], references: [id], onDelete: SetNull)
+  projectId        String?
+  project          Project?  @relation(fields: [projectId], references: [id], onDelete: SetNull)
+  milestoneId      String?
+  milestone        Milestone? @relation(fields: [milestoneId], references: [id], onDelete: SetNull)
+  parentId         String?
+  parent           Task?     @relation("Subtasks", fields: [parentId], references: [id], onDelete: Cascade)
+  subtasks         Task[]    @relation("Subtasks")
+
+  status           String    @default("todo") // inbox | todo | in_progress | waiting | blocked | on_hold | completed | cancelled
+  priority         Int       @default(3) // 1 critical, 2 high, 3 medium, 4 low, 5 someday
+  importance       Int       @default(3) // 1-5
+  urgency          Int       @default(3) // 1-5
+  impact           Int       @default(3) // 1-5
+  energy           String    @default("medium") // low | medium | high
+  manualScore      Int?      // user override of computed priority score (0-100)
+  pinnedToday      Boolean   @default(false) // explicitly added to My Day
+  myDayDate        String?   // date it was added to My Day
+  delegatable      Boolean   @default(false)
+
+  startDate        String?
+  dueDate          String?
+  dueTime          String?   // "HH:mm"
+  scheduledStart   DateTime? // time block start
+  scheduledEnd     DateTime?
+  estimateMin      Int?
+  actualMin        Int       @default(0)
+
+  tags             String    @default("[]") // JSON string[]
+  recurrence       String?   // JSON RecurrenceRule (see src/lib/recurrence.ts)
+  recurrenceParentId String? // id of the task this occurrence was generated from
+  reminders        String    @default("[]") // JSON [{ minutesBefore }] or absolute ISO strings
+  waitingOn        String?   // person/organisation this task is waiting on
+  followUpDate     String?
+  postponeCount    Int       @default(0)
+  sortOrder        Float     @default(0)
+
+  isDemo           Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  completedAt      DateTime?
+  archivedAt       DateTime?
+  deletedAt        DateTime?
+
+  checklist        ChecklistItem[]
+  dependencies     TaskDependency[] @relation("TaskDependsOn")
+  dependents       TaskDependency[] @relation("TaskBlocks")
+  attachments      Attachment[]
+  focusSessions    FocusSession[]
+  goalLinks        Goal[]           @relation("GoalTasks")
+
+  @@index([status])
+  @@index([dueDate])
+  @@index([categoryId])
+  @@index([projectId])
+  @@index([parentId])
+  @@index([deletedAt])
+}
+
+model ChecklistItem {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  text      String
+  done      Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+model TaskDependency {
+  taskId      String
+  task        Task   @relation("TaskDependsOn", fields: [taskId], references: [id], onDelete: Cascade)
+  dependsOnId String
+  dependsOn   Task   @relation("TaskBlocks", fields: [dependsOnId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, dependsOnId])
+}
+
+model Attachment {
+  id        String   @id @default(cuid())
+  taskId    String
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  name      String
+  url       String   // link or local file reference
+  createdAt DateTime @default(now())
+
+  @@index([taskId])
+}
+
+model FocusSession {
+  id         String    @id @default(cuid())
+  taskId     String?
+  task       Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  kind       String    @default("pomodoro") // pomodoro | stopwatch | break
+  startedAt  DateTime
+  endedAt    DateTime?
+  plannedMin Int?
+  actualMin  Int       @default(0)
+  notes      String    @default("")
+  isDemo     Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+}
+
+model Event {
+  id         String   @id @default(cuid())
+  title      String
+  kind       String   @default("meeting") // meeting | appointment | block
+  start      DateTime
+  end        DateTime
+  categoryId String?
+  location   String   @default("")
+  notes      String   @default("")
+  recurrence String?
+  source     String   @default("local") // local | google | outlook (future integrations)
+  externalId String?
+  isDemo     Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  deletedAt  DateTime?
+
+  @@index([start])
+}
+
+model Goal {
+  id          String    @id @default(cuid())
+  title       String
+  description String    @default("")
+  horizon     String    @default("quarterly") // weekly | monthly | quarterly | annual | long_term
+  categoryId  String?
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  targetValue Float?
+  currentValue Float    @default(0)
+  unit        String    @default("")
+  autoProgress Boolean  @default(true) // compute from linked projects/tasks
+  targetDate  String?
+  status      String    @default("active")
+  isDemo      Boolean   @default(false)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  projects    Project[]
+  tasks       Task[]    @relation("GoalTasks")
+}
+
+model Habit {
+  id          String     @id @default(cuid())
+  name        String
+  icon        String     @default("Repeat")
+  color       String     @default("emerald")
+  categoryId  String?
+  category    Category?  @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  frequency   String     @default("daily") // daily | weekly | custom
+  daysOfWeek  String     @default("[0,1,2,3,4,5,6]") // JSON number[]
+  targetPerWeek Int      @default(7)
+  reminderTime String?
+  archivedAt  DateTime?
+  isDemo      Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  logs        HabitLog[]
+}
+
+model HabitLog {
+  id      String @id @default(cuid())
+  habitId String
+  habit   Habit  @relation(fields: [habitId], references: [id], onDelete: Cascade)
+  date    String // YYYY-MM-DD
+
+  @@unique([habitId, date])
+}
+
+model Note {
+  id        String    @id @default(cuid())
+  kind      String    @default("braindump") // braindump | idea | note | daily
+  date      String?   // for daily notes
+  content   String    @default("")
+  processed Boolean   @default(false)
+  isDemo    Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+}
+
+model SavedView {
+  id        String   @id @default(cuid())
+  name      String
+  icon      String   @default("Filter")
+  filters   String   @default("{}") // JSON TaskFilter
+  sort      String   @default("score")
+  pinned    Boolean  @default(false)
+  sortOrder Int      @default(0)
+  isDemo    Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Review {
+  id        String   @id @default(cuid())
+  kind      String   // daily | weekly
+  period    String   // YYYY-MM-DD (daily) or YYYY-Www (weekly)
+  data      String   // JSON snapshot
+  reflection String  @default("")
+  createdAt DateTime @default(now())
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  kind      String
+  title     String
+  body      String    @default("")
+  href      String?
+  dedupeKey String?   @unique
+  readAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+model Template {
+  id        String   @id @default(cuid())
+  name      String
+  kind      String   @default("project") // task | project
+  payload   String   // JSON
+  builtIn   Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
