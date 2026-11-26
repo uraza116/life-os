@@ -79,7 +79,8 @@ create/trash/restore, categories and subcategories, exports, palette, and demo l
 data keeps the user's own rows). The local DB was left with the default categories and fresh demo data.
 
 Not done yet (next steps):
-1. Docs: README, ARCHITECTURE, ROADMAP, CHANGELOG, `.env.example`. JSON import is not built (export only).
+1. Docs: README and `.env.example` exist (2026-11-26); ARCHITECTURE, ROADMAP, CHANGELOG are still to do.
+   JSON import is not built (export only). Code is on GitHub (private): uraza116/life-os, branch master.
 2. Scoring weights are shown read-only in Settings. `settingsPatch` already accepts `scoringWeights`, so
    only the UI is missing.
 3. Saved views (`SavedView` model) and daily notes are in the schema but not in the UI.
