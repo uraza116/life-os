@@ -1,7 +1,8 @@
 "use client";
 
 import { format } from "date-fns";
-import { Archive, CalendarClock, CircleCheck, Inbox, ListTodo, Plus, Search, Sun, Trash } from "lucide-react";
+import { Archive, Bookmark, CalendarClock, CircleCheck, Inbox, ListTodo, NotebookPen, Plus, Search, Sun, Trash } from "lucide-react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useMemo, useState, type ReactNode } from "react";
 import { ENERGY_LEVELS, STATUS_LABEL, TASK_STATUSES } from "@/lib/constants";
 import { addDaysKey, formatDue, formatMinutes, fromDateKey } from "@/lib/dates";
@@ -10,7 +11,7 @@ import { BUCKET_LABEL } from "@/lib/scoring";
 import type { TaskDTO, TaskFilter } from "@/lib/types";
 import { useStore } from "../store";
 import { TaskList } from "../task-list";
-import { Button, Card, cn, Empty, Input, PageHeader, Progress, Select } from "../ui";
+import { Button, Card, cn, Empty, Input, PageHeader, Progress, Select, Textarea } from "../ui";
 
 function Section({ title, count, children, tone }: { title: string; count?: number; children: ReactNode; tone?: string }) {
   return (
@@ -159,7 +160,46 @@ export function MyDayView() {
           <TaskList tasks={doneToday} />
         </Section>
       )}
+      <DailyNote />
     </>
+  );
+}
+
+/** Free-text note for today, saved when the box loses focus. Earlier notes are listed below it. */
+function DailyNote() {
+  const { ws, today, saveDailyNote } = useStore();
+  const [showOld, setShowOld] = useState(false);
+  if (!ws) return null;
+  const current = ws.dailyNotes.find((n) => n.date === today)?.content ?? "";
+  const older = ws.dailyNotes.filter((n) => n.date < today).sort((a, b) => b.date.localeCompare(a.date));
+  return (
+    <Section title="Daily note">
+      <Textarea
+        key={today}
+        aria-label="Daily note"
+        className="min-h-28"
+        defaultValue={current}
+        placeholder="Plans, wins, blockers, anything you want to remember about today…"
+        onBlur={(e) => e.target.value !== current && void saveDailyNote(today, e.target.value)}
+      />
+      {older.length > 0 && (
+        <div className="mt-2">
+          <button type="button" className="inline-flex cursor-pointer items-center gap-1 text-xs text-muted hover:text-fg" onClick={() => setShowOld((v) => !v)}>
+            <NotebookPen className="h-3.5 w-3.5" /> {showOld ? "Hide" : "Show"} {older.length} earlier note{older.length === 1 ? "" : "s"}
+          </button>
+          {showOld && (
+            <div className="mt-2 space-y-2">
+              {older.slice(0, 30).map((n) => (
+                <Card key={n.date} className="p-3">
+                  <div className="mb-1 text-xs font-medium text-muted">{format(fromDateKey(n.date), "EEEE, MMMM d, yyyy")}</div>
+                  <div className="whitespace-pre-wrap text-sm">{n.content}</div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </Section>
   );
 }
 
@@ -198,10 +238,35 @@ const DUE_OPTIONS: { value: NonNullable<TaskFilter["due"]>; label: string }[] = 
   { value: "none", label: "No date" },
 ];
 
+const DEFAULT_FILTER: TaskFilter = { due: "any" };
+
+/** Drops empty values so a saved view compares equal to the same filters set by hand. */
+function normFilter(f: TaskFilter) {
+  return Object.fromEntries(
+    Object.entries({ due: "any", ...f })
+      .filter(([, v]) => v !== undefined && v !== "" && v !== false && !(Array.isArray(v) && !v.length))
+      .sort(([a], [b]) => a.localeCompare(b)),
+  );
+}
+const sameFilter = (a: TaskFilter, b: TaskFilter) => JSON.stringify(normFilter(a)) === JSON.stringify(normFilter(b));
+
 export function AllTasksView() {
-  const { ws, scores, today } = useStore();
-  const [f, setF] = useState<TaskFilter>({ due: "any" });
+  const { ws, scores, today, saveView, deleteView } = useStore();
+  const router = useRouter();
+  const viewId = useSearchParams().get("view");
+  const view = viewId ? ws?.views.find((v) => v.id === viewId) : undefined;
+  const [f, setF] = useState<TaskFilter>(DEFAULT_FILTER);
   const [sort, setSort] = useState<SortKey>("score");
+  const [naming, setNaming] = useState<string | null>(null);
+  // Load a saved view's filters when ?view= changes (derived state, adjusted during render).
+  const viewKey = view?.id ?? "";
+  const [loadedFor, setLoadedFor] = useState<string | null>(null);
+  if (ws && viewKey !== loadedFor) {
+    setLoadedFor(viewKey);
+    setF(view ? { ...DEFAULT_FILTER, ...view.filters } : DEFAULT_FILTER);
+    setSort(view ? (view.sort as SortKey) : "score");
+    setNaming(null);
+  }
   const tasks = useMemo(() => {
     if (!ws) return [];
     return sortTasks(ws.tasks.filter((t) => isLive(t) && matchesFilter(t, f, today)), sort, scores);
@@ -209,10 +274,79 @@ export function AllTasksView() {
   if (!ws) return null;
   const one = (v: string) => (v ? [v] : undefined);
   const active = Object.entries(f).some(([k, v]) => (k === "due" ? v !== "any" : v !== undefined && v !== "" && v !== false));
+  const dirty = !!view && (!sameFilter(f, view.filters) || sort !== view.sort);
+  const viewHref = (id: string) => `/tasks?view=${id}`;
+
+  const saveNew = async () => {
+    if (!naming?.trim()) return;
+    const v = await saveView({ name: naming.trim(), filters: f, sort, pinned: true });
+    setNaming(null);
+    if (v) router.push(viewHref(v.id));
+  };
 
   return (
     <>
-      <PageHeader title="All Tasks" icon={<ListTodo className="h-5 w-5 text-accent" />} subtitle="Filter, sort, search and act on many tasks at once." />
+      <PageHeader
+        title={view ? view.name : "All Tasks"}
+        icon={view ? <Bookmark className="h-5 w-5 text-accent" /> : <ListTodo className="h-5 w-5 text-accent" />}
+        subtitle={view ? "Saved view. Change the filters and press Update view to keep the changes." : "Filter, sort, search and act on many tasks at once."}
+        actions={
+          <>
+            {ws.views.length > 0 && (
+              <Select aria-label="Saved views" className="w-auto" value={view?.id ?? ""} onChange={(e) => router.push(e.target.value ? viewHref(e.target.value) : "/tasks")}>
+                <option value="">All tasks (no saved view)</option>
+                {ws.views.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </Select>
+            )}
+            {view && dirty && <Button onClick={() => void saveView({ id: view.id, name: view.name, filters: f, sort })}>Update view</Button>}
+            {view && (
+              <Button
+                variant="ghost"
+                onClick={() => {
+                  if (!confirm(`Delete saved view "${view.name}"? Tasks are not affected.`)) return;
+                  void deleteView(view.id);
+                  router.push("/tasks");
+                }}
+              >
+                Delete view
+              </Button>
+            )}
+            {naming === null ? (
+              <Button disabled={!active} title={active ? "Save these filters as a view" : "Set some filters first"} onClick={() => setNaming(view ? `${view.name} (copy)` : "")}>
+                <Bookmark className="h-4 w-4" /> Save as view
+              </Button>
+            ) : (
+              <form
+                className="flex gap-2"
+                onSubmit={(e) => {
+                  e.preventDefault();
+                  void saveNew();
+                }}
+              >
+                <Input
+                  autoFocus
+                  aria-label="View name"
+                  className="w-44"
+                  placeholder="View name"
+                  value={naming}
+                  onChange={(e) => setNaming(e.target.value)}
+                  onKeyDown={(e) => e.key === "Escape" && setNaming(null)}
+                />
+                <Button type="submit" variant="primary" disabled={!naming.trim()}>
+                  Save
+                </Button>
+                <Button type="button" variant="ghost" onClick={() => setNaming(null)}>
+                  Cancel
+                </Button>
+              </form>
+            )}
+          </>
+        }
+      />
       <Card className="mb-4 flex flex-wrap items-center gap-2 p-3">
         <div className="relative min-w-48 flex-1">
           <Search className="pointer-events-none absolute left-2.5 top-2 h-4 w-4 text-faint" />
@@ -286,7 +420,7 @@ export function AllTasksView() {
           Show completed
         </label>
         {active && (
-          <Button size="sm" variant="ghost" onClick={() => setF({ due: "any" })}>
+          <Button size="sm" variant="ghost" onClick={() => setF(DEFAULT_FILTER)}>
             Clear filters
           </Button>
         )}

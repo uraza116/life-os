@@ -8,9 +8,9 @@ A personal task and life planner that runs on your own computer. Tasks get a tra
 
 - **Screens:**
   - Overview dashboard
-  - My Day
+  - My Day, with a daily note
   - Inbox
-  - All Tasks, with filters, sort, search and bulk edit
+  - All Tasks, with filters, sort, search, bulk edit and saved views
   - Upcoming
   - Projects, with milestones
   - Completed
@@ -19,7 +19,7 @@ A personal task and life planner that runs on your own computer. Tasks get a tra
 - **Priority score:**
   - Each task gets a 0–100 score built from importance, urgency, impact, due date and other factors.
   - The task shows the reasons behind its score.
-  - You can override the score by hand.
+  - You can override the score by hand, and change how much each factor counts in Settings.
   - Tasks are also placed in an Eisenhower (urgent/important) quadrant.
 - **Quick add** (`Q` or `N`) understands natural language:
   - dates and times
@@ -39,7 +39,7 @@ A personal task and life planner that runs on your own computer. Tasks get a tra
 - **Command palette** (`Ctrl+K`) for jumping to any screen or task.
 - **Life categories** you can edit: Business, PhD & Research, Teaching, Career, Side Projects, Personal & Family, Finance, Health and Learning, each with subcategories.
 - **Demo data** you can load and remove from Settings. Removing it never touches your own tasks.
-- **Export** to JSON or CSV.
+- **Export** to JSON or CSV, and **import** a JSON backup (merge it in, or replace everything).
 - Light and dark themes.
 
 Calendar, Kanban, Goals, Habits, Brain Dump, Focus, Analytics and AI appear in the sidebar as dimmed "soon" items. They are not built yet.
@@ -138,11 +138,8 @@ Next.js 16 (App Router) · React 19 · TypeScript · Tailwind CSS v4 · Prisma 7
 | `src/components/` | The app shell, the store (one client-side store with optimistic updates) and one view per screen |
 | `prisma/schema.prisma` | The data model |
 
-`CLAUDE.md` has the detailed architecture notes and known gotchas.
+`ARCHITECTURE.md` explains the data flow, API, data model and priority score. `ROADMAP.md` lists what comes next and `CHANGELOG.md` what changed. `CLAUDE.md` has notes for AI coding sessions.
 
 ## Not done yet
 
-- JSON import (export works)
-- Editing scoring weights in Settings (shown read-only for now)
-- Saved views and daily notes (in the data model but not in the interface)
-- Later phases: calendar, Kanban, goals, habits, focus timer, analytics, AI assistance
+Phase 1 is complete. Calendar, Kanban, Goals, Habits, Brain Dump, Focus, Analytics and AI assistance are later phases; see `ROADMAP.md`.

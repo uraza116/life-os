@@ -120,3 +120,33 @@ export const settingsPatch = z.object({
   weekStartsOn: z.number().int().min(0).max(6).optional(),
   scoringWeights: z.record(z.string(), z.number().min(0).max(100)).optional(),
 });
+
+export const taskFilterSchema = z.object({
+  search: z.string().max(200).optional(),
+  categoryIds: z.array(z.string()).max(50).optional(),
+  projectIds: z.array(z.string()).max(50).optional(),
+  priorities: z.array(z.number().int().min(1).max(5)).optional(),
+  statuses: z.array(z.enum(TASK_STATUSES)).optional(),
+  energy: z.array(z.enum(ENERGY_LEVELS)).optional(),
+  maxMinutes: z.number().int().min(0).optional(),
+  due: z.enum(["overdue", "today", "tomorrow", "week", "next7", "next30", "none", "any"]).optional(),
+  tag: z.string().max(50).optional(),
+  highPriority: z.boolean().optional(),
+  waiting: z.boolean().optional(),
+  includeCompleted: z.boolean().optional(),
+});
+
+export const SORT_KEYS = ["score", "due", "priority", "created", "title", "estimate"] as const;
+
+export const savedViewInput = z.object({
+  name: z.string().trim().min(1).max(60),
+  filters: taskFilterSchema,
+  sort: z.enum(SORT_KEYS),
+  pinned: z.boolean().optional(),
+});
+export const savedViewPatch = savedViewInput.partial();
+
+export const dailyNoteInput = z.object({
+  date: dateKey,
+  content: z.string().max(100000),
+});

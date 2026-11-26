@@ -9,7 +9,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState, t
 import { toast } from "sonner";
 import { todayKey } from "@/lib/dates";
 import { buildScoreContext, scoreTask, type ScoreResult } from "@/lib/scoring";
-import type { CategoryDTO, MilestoneDTO, ProjectDTO, SettingsDTO, SubcategoryDTO, TaskDTO, Workspace } from "@/lib/types";
+import type { CategoryDTO, MilestoneDTO, ProjectDTO, SavedViewDTO, SettingsDTO, SubcategoryDTO, TaskDTO, Workspace } from "@/lib/types";
 import type { TaskInput } from "@/lib/validation";
 
 type BulkAction = "update" | "complete" | "reopen" | "delete" | "restore" | "purge" | "archive" | "unarchive";
@@ -88,6 +88,12 @@ type Store = {
   saveSettings: (s: Partial<SettingsDTO>) => Promise<void>;
   loadDemo: () => Promise<void>;
   removeDemo: () => Promise<void>;
+  /** Throws on failure so the caller can show the reason. */
+  importData: (mode: "merge" | "replace", data: unknown) => Promise<Record<string, number>>;
+  // saved views & daily notes
+  saveView: (v: Omit<SavedViewDTO, "id" | "icon" | "pinned"> & { id?: string; pinned?: boolean }) => Promise<SavedViewDTO | undefined>;
+  deleteView: (id: string) => Promise<void>;
+  saveDailyNote: (date: string, content: string) => Promise<void>;
   // UI
   editingId: string | null;
   openTask: (id: string | null) => void;
@@ -381,6 +387,52 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     });
   }, [guard, reload]);
 
+  const importData = useCallback<Store["importData"]>(
+    async (mode, data) => {
+      // Not wrapped in guard: the caller shows the server's message (e.g. "Invalid input") in context.
+      const r = await api<{ imported: Record<string, number> }>("POST", "/api/import", { mode, data });
+      await reload();
+      return r.imported;
+    },
+    [reload],
+  );
+
+  const saveView = useCallback<Store["saveView"]>(
+    async (v) => {
+      return guard(async () => {
+        const { id, ...body } = v;
+        const r = id
+          ? await api<{ view: SavedViewDTO }>("PATCH", `/api/views/${id}`, body)
+          : await api<{ view: SavedViewDTO }>("POST", "/api/views", body);
+        setWs((w) =>
+          w ? { ...w, views: w.views.some((x) => x.id === r.view.id) ? w.views.map((x) => (x.id === r.view.id ? r.view : x)) : [...w.views, r.view] } : w,
+        );
+        return r.view;
+      });
+    },
+    [guard],
+  );
+
+  const deleteView = useCallback<Store["deleteView"]>(
+    async (id) => {
+      setWs((w) => (w ? { ...w, views: w.views.filter((v) => v.id !== id) } : w));
+      await guard(() => api("DELETE", `/api/views/${id}`));
+    },
+    [guard],
+  );
+
+  const saveDailyNote = useCallback<Store["saveDailyNote"]>(
+    async (date, content) => {
+      setWs((w) => {
+        if (!w) return w;
+        const rest = w.dailyNotes.filter((n) => n.date !== date);
+        return { ...w, dailyNotes: content.trim() ? [{ date, content }, ...rest] : rest };
+      });
+      await guard(() => api("PUT", "/api/notes", { date, content }));
+    },
+    [guard],
+  );
+
   const scores = useMemo(() => {
     const map = new Map<string, ScoreResult>();
     if (!ws) return map;
@@ -412,6 +464,10 @@ export function StoreProvider({ children }: { children: ReactNode }) {
     saveSettings,
     loadDemo,
     removeDemo,
+    importData,
+    saveView,
+    deleteView,
+    saveDailyNote,
     editingId,
     openTask: setEditingId,
     quickAdd,

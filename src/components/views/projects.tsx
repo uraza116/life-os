@@ -157,7 +157,7 @@ export function ProjectsView() {
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 font-medium">
                         <Dot color={p.color ?? cat?.color} />
-                        <span className="truncate">{p.name}</span>
+                        <span className="line-clamp-2 break-words" title={p.name}>{p.name}</span>
                         {p.pinned && <Pin className="h-3 w-3 shrink-0 text-faint" />}
                       </div>
                       <div className="mt-0.5 text-xs text-muted">{cat?.name ?? "No category"}</div>

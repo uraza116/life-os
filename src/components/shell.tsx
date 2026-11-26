@@ -1,8 +1,8 @@
 "use client";
 
-import { Moon, PanelLeft, PanelLeftClose, Plus, Search, Sun } from "lucide-react";
+import { Bookmark, Moon, PanelLeft, PanelLeftClose, Plus, Search, Sun } from "lucide-react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { ThemeProvider, useTheme } from "next-themes";
 import { Tooltip } from "radix-ui";
 import { Suspense, useEffect, useState, type ReactNode } from "react";
@@ -133,6 +133,7 @@ function ThemeToggle() {
 function Sidebar({ collapsed }: { collapsed: boolean }) {
   const { ws, today } = useStore();
   const pathname = usePathname();
+  const viewParam = useSearchParams().get("view");
   const counts: Record<string, number> = {};
   if (ws) {
     counts["/my-day"] = ws.tasks.filter((t) => isOnMyDay(t, today) || isOverdue(t, today)).length;
@@ -142,7 +143,7 @@ function Sidebar({ collapsed }: { collapsed: boolean }) {
   const pinnedProjects = ws?.projects.filter((p) => p.pinned && !p.deletedAt && !p.archivedAt) ?? [];
 
   const link = (n: NavItem) => {
-    const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href);
+    const active = n.href === "/" ? pathname === "/" : pathname.startsWith(n.href) && !(n.href === "/tasks" && viewParam);
     if (n.soon) {
       return (
         <div
@@ -187,6 +188,24 @@ function Sidebar({ collapsed }: { collapsed: boolean }) {
       </div>
       <nav className="flex-1 space-y-0.5 overflow-y-auto p-2" aria-label="Main">
         {NAV_MAIN.map(link)}
+        {!collapsed && (ws?.views.length ?? 0) > 0 && (
+          <div className="pt-3">
+            <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-faint">Saved views</div>
+            {ws?.views.map((v) => (
+              <Link
+                key={v.id}
+                href={`/tasks?view=${v.id}`}
+                className={cn(
+                  "flex h-8 items-center gap-2.5 rounded-md px-2 text-sm",
+                  pathname === "/tasks" && viewParam === v.id ? "bg-accent-soft text-accent" : "text-muted hover:bg-panel-2 hover:text-fg",
+                )}
+              >
+                <Bookmark className="h-4 w-4 shrink-0" />
+                <span className="truncate">{v.name}</span>
+              </Link>
+            ))}
+          </div>
+        )}
         {!collapsed && pinnedProjects.length > 0 && (
           <div className="pt-3">
             <div className="px-2 pb-1 text-[11px] font-semibold uppercase tracking-wide text-faint">Pinned projects</div>

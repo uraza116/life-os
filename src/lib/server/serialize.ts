@@ -1,7 +1,7 @@
 import "server-only";
 import type { Prisma } from "@/generated/prisma/client";
 import { parseRecurrence } from "../recurrence";
-import type { CategoryDTO, MilestoneDTO, ProjectDTO, SettingsDTO, TaskDTO } from "../types";
+import type { CategoryDTO, DailyNoteDTO, MilestoneDTO, ProjectDTO, SavedViewDTO, SettingsDTO, TaskDTO, TaskFilter } from "../types";
 import type { TaskStatus } from "../constants";
 
 const iso = (d: Date | null | undefined) => (d ? d.toISOString() : null);
@@ -147,4 +147,14 @@ export function toSettingsDTO(s: SettingsRow): SettingsDTO {
     scoringWeights: parseJson<Record<string, number>>(s.scoringWeights, {}),
     demoLoaded: s.demoLoaded,
   };
+}
+
+type SavedViewRow = Prisma.SavedViewGetPayload<object>;
+export function toSavedViewDTO(v: SavedViewRow): SavedViewDTO {
+  return { id: v.id, name: v.name, icon: v.icon, filters: parseJson<TaskFilter>(v.filters, {}), sort: v.sort, pinned: v.pinned };
+}
+
+type NoteRow = Prisma.NoteGetPayload<object>;
+export function toDailyNoteDTO(n: NoteRow): DailyNoteDTO {
+  return { date: n.date ?? "", content: n.content };
 }

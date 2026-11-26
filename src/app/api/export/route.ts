@@ -7,7 +7,9 @@ import {
   projectInclude,
   taskInclude,
   toCategoryDTO,
+  toDailyNoteDTO,
   toProjectDTO,
+  toSavedViewDTO,
   toSettingsDTO,
   toTaskDTO,
 } from "@/lib/server/serialize";
@@ -21,11 +23,13 @@ export async function GET(req: NextRequest) {
   await connection();
   return handle(async () => {
     const format = req.nextUrl.searchParams.get("format") === "csv" ? "csv" : "json";
-    const [settings, categories, projects, tasks] = await Promise.all([
+    const [settings, categories, projects, tasks, views, notes] = await Promise.all([
       prisma.settings.findUnique({ where: { id: "singleton" } }),
       prisma.category.findMany({ include: categoryInclude, orderBy: { sortOrder: "asc" } }),
       prisma.project.findMany({ include: projectInclude }),
       prisma.task.findMany({ include: taskInclude, orderBy: { createdAt: "asc" } }),
+      prisma.savedView.findMany({ orderBy: { createdAt: "asc" } }),
+      prisma.note.findMany({ where: { kind: "daily", deletedAt: null }, orderBy: { date: "asc" } }),
     ]);
     const stamp = todayKey();
     if (format === "json") {
@@ -38,6 +42,8 @@ export async function GET(req: NextRequest) {
           categories: categories.map(toCategoryDTO),
           projects: projects.map(toProjectDTO),
           tasks: tasks.map(toTaskDTO),
+          views: views.map(toSavedViewDTO),
+          dailyNotes: notes.map(toDailyNoteDTO),
         },
         null,
         2,

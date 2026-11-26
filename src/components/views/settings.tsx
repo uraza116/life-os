@@ -1,7 +1,8 @@
 "use client";
 
-import { ChevronDown, ChevronRight, Database, Download, Plus, Settings, Trash, X } from "lucide-react";
+import { ChevronDown, ChevronRight, Database, Download, Plus, Settings, Trash, Upload, X } from "lucide-react";
 import { useTheme } from "next-themes";
+import { toast } from "sonner";
 import { useState, type ReactNode } from "react";
 import { CATEGORY_COLORS, CATEGORY_ICONS, ENERGY_LEVELS } from "@/lib/constants";
 import { DEFAULT_WEIGHTS, WEIGHT_LABELS, type Weights } from "@/lib/scoring";
@@ -16,6 +17,76 @@ function SectionCard({ title, hint, children }: { title: string; hint?: string; 
       {hint && <p className="mt-0.5 text-xs text-muted">{hint}</p>}
       <div className="mt-4">{children}</div>
     </Card>
+  );
+}
+
+type ImportSummary = { file: string; data: unknown; counts: { categories: number; projects: number; tasks: number; views: number; notes: number } };
+
+function ImportPanel() {
+  const { importData } = useStore();
+  const [picked, setPicked] = useState<ImportSummary | null>(null);
+  const [mode, setMode] = useState<"merge" | "replace">("merge");
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const onFile = async (file: File | undefined) => {
+    setError(null);
+    setPicked(null);
+    if (!file) return;
+    try {
+      const data = JSON.parse(await file.text());
+      if (data?.app !== "life-os") throw new Error("This isn't a Life OS export (expected \"app\": \"life-os\").");
+      const n = (k: string) => (Array.isArray(data[k]) ? data[k].length : 0);
+      setPicked({ file: file.name, data, counts: { categories: n("categories"), projects: n("projects"), tasks: n("tasks"), views: n("views"), notes: n("dailyNotes") } });
+    } catch (e) {
+      setError(e instanceof SyntaxError ? "The file is not valid JSON." : e instanceof Error ? e.message : String(e));
+    }
+  };
+
+  const run = async () => {
+    if (!picked) return;
+    if (mode === "replace" && !confirm("Replace ALL current categories, projects, tasks, saved views and daily notes with this file? This cannot be undone. Export a backup first if unsure.")) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await importData(mode, picked.data);
+      toast.success(`Imported ${r.tasks} tasks, ${r.projects} projects and ${r.categories} categories`);
+      setPicked(null);
+    } catch (e) {
+      setError(`Import failed, nothing was changed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-5 border-t border-border pt-4">
+      <Label>Import a JSON backup</Label>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md border border-border bg-panel px-3 text-sm font-medium hover:bg-panel-2">
+          <Upload className="h-4 w-4" /> Choose file…
+          <input type="file" accept="application/json,.json" className="sr-only" onChange={(e) => void onFile(e.target.files?.[0])} onClick={(e) => ((e.target as HTMLInputElement).value = "")} />
+        </label>
+        {picked && (
+          <>
+            <Select aria-label="Import mode" className="w-auto" value={mode} onChange={(e) => setMode(e.target.value as "merge" | "replace")}>
+              <option value="merge">Merge (add new, update matching ids)</option>
+              <option value="replace">Replace everything</option>
+            </Select>
+            <Button variant={mode === "replace" ? "danger" : "primary"} disabled={busy} onClick={() => void run()}>
+              {busy ? "Importing…" : "Import"}
+            </Button>
+          </>
+        )}
+      </div>
+      {picked && (
+        <p className="mt-2 text-xs text-muted">
+          {picked.file}: {picked.counts.tasks} tasks, {picked.counts.projects} projects, {picked.counts.categories} categories, {picked.counts.views} saved views,{" "}
+          {picked.counts.notes} daily notes.
+        </p>
+      )}
+      {error && <p className="mt-2 text-xs text-danger">{error}</p>}
+    </div>
   );
 }
 
@@ -36,7 +107,7 @@ function CategoryRow({ c }: { c: CategoryDTO }) {
         <NamedIcon name={c.icon} className="h-4 w-4 text-muted" />
         <Input
           aria-label="Category name"
-          className="h-7 w-44"
+          className="h-7 min-w-36 max-w-64 flex-1"
           value={name}
           onChange={(e) => setName(e.target.value)}
           onBlur={() => name.trim() && name !== c.name && save({ name: name.trim() })}
@@ -197,14 +268,44 @@ export function SettingsView() {
           </form>
         </SectionCard>
 
-        <SectionCard title="Priority score" hint="Each open task gets a transparent 0–100 score from these weighted factors. Open any task to see its breakdown, or override it manually.">
-          <div className="grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2">
+        <SectionCard
+          title="Priority score weights"
+          hint="Each open task gets a 0–100 score from these weighted factors. The base weights add up to 100 by default; raise one to make that factor count for more. Open any task to see its breakdown, or override its score by hand."
+        >
+          {/* key remounts the inputs after a reset so their default values refresh */}
+          <div key={JSON.stringify(s.scoringWeights)} className="grid gap-x-8 gap-y-1 text-sm sm:grid-cols-2">
             {(Object.keys(DEFAULT_WEIGHTS) as (keyof Weights)[]).map((k) => (
-              <div key={k} className="flex justify-between border-b border-border py-1.5">
-                <span className="text-muted">{WEIGHT_LABELS[k]}</span>
-                <span className="tabular-nums">{weights[k]}</span>
-              </div>
+              <label key={k} className="flex items-center justify-between gap-3 border-b border-border py-1.5">
+                <span className="text-muted">
+                  {WEIGHT_LABELS[k]}
+                  {weights[k] !== DEFAULT_WEIGHTS[k] && <span className="ml-1.5 text-[11px] text-faint">(default {DEFAULT_WEIGHTS[k]})</span>}
+                </span>
+                <Input
+                  type="number"
+                  min={0}
+                  max={100}
+                  aria-label={`Weight for ${WEIGHT_LABELS[k]}`}
+                  className="h-7 w-20 text-right tabular-nums"
+                  defaultValue={weights[k]}
+                  onBlur={(e) => {
+                    const v = Math.max(0, Math.min(100, Math.round(Number(e.target.value) || 0)));
+                    e.target.value = String(v);
+                    if (v === weights[k]) return;
+                    const next: Record<string, number> = { ...s.scoringWeights, [k]: v };
+                    if (v === DEFAULT_WEIGHTS[k]) delete next[k];
+                    void saveSettings({ scoringWeights: next });
+                  }}
+                />
+              </label>
             ))}
+          </div>
+          <div className="mt-3 flex items-center gap-3 text-xs text-muted">
+            <span className="tabular-nums">
+              Base total: {(Object.keys(DEFAULT_WEIGHTS) as (keyof Weights)[]).filter((k) => k !== "overdue").reduce((a, k) => a + weights[k], 0)} (overdue boost is extra)
+            </span>
+            <Button size="sm" disabled={Object.keys(s.scoringWeights).length === 0} onClick={() => void saveSettings({ scoringWeights: {} })}>
+              Reset to defaults
+            </Button>
           </div>
         </SectionCard>
 
@@ -237,7 +338,7 @@ export function SettingsView() {
           </div>
         </SectionCard>
 
-        <SectionCard title="Export" hint="Download a copy of everything. JSON is a full backup; CSV opens in Excel or Google Sheets.">
+        <SectionCard title="Backup: export and import" hint="JSON is a full backup you can import again here; CSV (tasks only) opens in Excel or Google Sheets.">
           <div className="flex flex-wrap gap-2">
             <a href="/api/export?format=json" download>
               <Button type="button" tabIndex={-1}>
@@ -250,6 +351,7 @@ export function SettingsView() {
               </Button>
             </a>
           </div>
+          <ImportPanel />
         </SectionCard>
       </div>
     </>

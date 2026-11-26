@@ -2,7 +2,7 @@
 
 import { Command } from "cmdk";
 import { Dialog } from "radix-ui";
-import { FolderKanban, Moon, Plus, Search, Sun } from "lucide-react";
+import { Bookmark, FolderKanban, Moon, Plus, Search, Sun } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTheme } from "next-themes";
 import { useState } from "react";
@@ -58,6 +58,11 @@ export function CommandPalette() {
                 {[...NAV_MAIN, NAV_SETTINGS].map((n) => (
                   <Command.Item key={n.href} className={item} value={`go ${n.label}`} onSelect={() => go(() => router.push(n.href))}>
                     <n.icon className="h-4 w-4 text-muted" /> {n.label}
+                  </Command.Item>
+                ))}
+                {(ws?.views ?? []).map((v) => (
+                  <Command.Item key={v.id} className={item} value={`view ${v.name} ${v.id}`} onSelect={() => go(() => router.push(`/tasks?view=${v.id}`))}>
+                    <Bookmark className="h-4 w-4 text-muted" /> {v.name}
                   </Command.Item>
                 ))}
               </Command.Group>

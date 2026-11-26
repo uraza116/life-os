@@ -78,15 +78,31 @@ browser pane in light and dark: quick add, editor, recurrence, bulk edit, filter
 create/trash/restore, categories and subcategories, exports, palette, and demo load/remove (removing demo
 data keeps the user's own rows). The local DB was left with the default categories and fresh demo data.
 
-Not done yet (next steps):
-1. Docs: README and `.env.example` exist (2026-11-26); ARCHITECTURE, ROADMAP, CHANGELOG are still to do.
-   JSON import is not built (export only). Code is on GitHub (public): uraza116/life-os, branch master. Image is public on Docker Hub: usman116/life-os (tags 0.1.0, latest).
-   Docker (2026-11-26): `Dockerfile` (deps → build → runner, node:24-bookworm-slim, non-root),
-   `docker-entrypoint.sh` (prisma migrate deploy, then `next start -H 0.0.0.0`), `docker-compose.yml`
-   (127.0.0.1:${LIFE_OS_PORT:-3100}, volume `life-os-data` at /data). `dotenv` was moved to dependencies
-   because `prisma.config.ts` needs it at runtime. Verified: build, migrate, add task, survives recreate.
-2. Scoring weights are shown read-only in Settings. `settingsPatch` already accepts `scoringWeights`, so
-   only the UI is missing.
-3. Saved views (`SavedView` model) and daily notes are in the schema but not in the UI.
-4. Small polish: project card titles truncate at narrow widths; settings category rows wrap below ~900px.
-5. Later phases (Calendar, Kanban, Goals, Habits, Brain Dump, Focus, Analytics, AI) are dimmed "soon" items.
+Publishing: code is on GitHub (public): uraza116/life-os, branch master. Image is public on Docker Hub:
+usman116/life-os (tags 0.1.0, latest). Docker (2026-11-26): `Dockerfile` (deps → build → runner,
+node:24-bookworm-slim, non-root), `docker-entrypoint.sh` (prisma migrate deploy, then
+`next start -H 0.0.0.0`), `docker-compose.yml` (127.0.0.1:${LIFE_OS_PORT:-3100}, volume `life-os-data`
+at /data). `dotenv` is in dependencies because `prisma.config.ts` needs it at runtime.
+
+## Phase 1 completed (0.2.0, 2026-11-26)
+Added on top of the core:
+- JSON import: `POST /api/import` `{mode: "merge"|"replace", data}` → `src/lib/server/import.ts` (one
+  interactive transaction, 120 s timeout; two passes so parent links and dependencies resolve; unknown
+  category/project/milestone ids become null). Settings → Backup has the file picker and mode choice.
+  Verified with a round trip on a copy of the DB (merge, replace, restore from empty, bad file rejected).
+- Scoring weights editable in Settings (only overrides are stored; reset clears them).
+- Saved views: `POST /api/views`, `PATCH`/`DELETE /api/views/[id]`; All Tasks reads `?view=<id>` (the
+  page wraps it in Suspense), loads its filters via derived state, offers Save as view / Update / Delete;
+  views are listed in the sidebar and the Ctrl+K palette.
+- Daily notes: `PUT /api/notes` `{date, content}` (empty content deletes); shown at the bottom of My Day.
+- Export includes `views` and `dailyNotes`. Docs: `ARCHITECTURE.md`, `ROADMAP.md`, `CHANGELOG.md`.
+- Polish: project card titles wrap to two lines; settings category name field stretches.
+
+Gotcha: a long-running `next dev` on OneDrive once kept serving a stale `validation.ts` (new exports were
+`undefined` at runtime while `tsc` passed). Restarting the dev server fixed it.
+
+The user's real tasks are now in the dev DB (demo rows are still there too). Don't test destructive
+flows (import replace, empty trash, remove demo) against it; use a copy of `life-os.db`.
+
+Next (later phases, not started): Calendar, Kanban, Goals, Habits, Brain Dump, Focus, Analytics, AI —
+see `ROADMAP.md`. The Docker Hub image is still 0.1.0 and lacks the 0.2.0 features until rebuilt.
